@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk.Worker">
+﻿<Project Sdk="Microsoft.NET.Sdk.Worker">
 
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
@@ -9,5 +9,16 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.1" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\BistrosoftChallenge.Infrastructure\BistrosoftChallenge.Infrastructure.csproj" />
+    <ProjectReference Include="..\BistrosoftChallenge.MessageContracts\BistrosoftChallenge.MessageContracts.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Automatonymous" Version="5.1.4-develop.12" />
+    <PackageReference Include="MassTransit" Version="7.3.1" />
+    <PackageReference Include="MassTransit.AspNetCore" Version="7.3.1" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="7.0.12" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" Version="7.0.12" />
   </ItemGroup>
 </Project>

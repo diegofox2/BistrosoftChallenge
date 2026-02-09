@@ -2,7 +2,7 @@
   <Project Path="BistrosoftChallenge.Domain/BistrosoftChallenge.Domain.csproj" Id="6372ee86-3ce6-4a2c-a04b-c968a0605da7" />
   <Project Path="BistrosoftChallenge.Infrastructure/BistrosoftChallenge.Infrastructure.csproj" Id="4d7bf9ea-18d2-4a2c-bc80-613271a08be2" />
   <Project Path="BistrosoftChallenge.MessageContracts/BistrosoftChallenge.MessageContracts.csproj" Id="7fbe48d3-ec44-4525-b3c0-9f0eabc7c936" />
-  <Project Path="BistrosoftChallenge.Test/BistrosoftChallenge.Test.csproj" Id="bd0c6650-b2a1-4967-ab1a-f633c1ff74ff" />
+  <Project Path="BistrosoftChallenge.Test/BistrosoftChallenge.Worker.Test.csproj" Id="bd0c6650-b2a1-4967-ab1a-f633c1ff74ff" />
   <Project Path="BistrosoftChallenge.Worker/BistrosoftChallenge.Worker.csproj" Id="bef0cbed-3cf7-455d-abd2-9788369c6998" />
   <Project Path="BistrosoftChallenge.Api/BistrosoftChallenge.Api.csproj" />
 </Solution>

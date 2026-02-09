@@ -1,11 +1,8 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using Microsoft.AspNetCore.Mvc;
+using BistrosoftChallenge.Domain.Entities;
 using BistrosoftChallenge.Infrastructure.Repositories;
 using BistrosoftChallenge.MessageContracts;
-using BistrosoftChallenge.Domain.Entities;
 using MassTransit;
+using Microsoft.AspNetCore.Mvc;
 
 namespace BistrosoftChallenge.Api.Controllers
 {
@@ -36,20 +33,17 @@ namespace BistrosoftChallenge.Api.Controllers
         [HttpGet("{id:guid}")]
         public async Task<IActionResult> Get(Guid id)
         {
-            var c = await _repo.GetByIdAsync(id);
-            if (c == null)
-            {
-                return NotFound();
-            }
-
-            return Ok(new
-            {
-                c.Id,
-                c.Name,
-                c.Email,
-                c.PhoneNumber,
-                Orders = c.Orders.Select(o => new { o.Id, o.Status, o.TotalAmount, o.CreatedAt })
-            });
+            var client = await _repo.GetByIdAsync(id);
+            return client == null
+                ? NotFound()
+                : Ok(new
+                    {
+                        client.Id,
+                        client.Name,
+                        client.Email,
+                        client.PhoneNumber,
+                        Orders = client.Orders.Select(o => new { o.Id, o.Status, o.TotalAmount, o.CreatedAt })
+                    });
         }
 
         [HttpGet("{id:guid}/orders")]

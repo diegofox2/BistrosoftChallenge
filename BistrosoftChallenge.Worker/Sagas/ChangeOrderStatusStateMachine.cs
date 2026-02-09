@@ -1,10 +1,7 @@
-using System;
-using Automatonymous;
-using MassTransit;
-using BistrosoftChallenge.Infrastructure;
 using BistrosoftChallenge.Domain.Entities;
+using BistrosoftChallenge.Infrastructure;
 using BistrosoftChallenge.MessageContracts;
-using Microsoft.EntityFrameworkCore;
+using MassTransit;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace BistrosoftChallenge.Worker.Sagas
@@ -28,41 +25,41 @@ namespace BistrosoftChallenge.Worker.Sagas
                 When(ChangeOrderStatus)
                     .ThenAsync(async context =>
                     {
-                        var msg = context.Data;
+                        var msg = context.Message;
                         var consumeContext = context.GetPayload<ConsumeContext>();
-                        var db = consumeContext.GetRequiredService<AppDbContext>();
+                        var db = consumeContext.GetPayload<IServiceProvider>().GetRequiredService<AppDbContext>();
 
                         var order = await db.Orders.FindAsync(new object[] { msg.OrderId }, consumeContext.CancellationToken);
                         if (order == null)
                         {
-                            context.Instance.LastError = "Order not found";
-                            context.Instance.UpdatedAt = DateTime.UtcNow;
-                            await MassTransit.BehaviorContextExtensions.Publish(context, new OrderStatusChangeFailed(msg.CorrelationId, msg.OrderId, "Order not found"));
+                            context.Saga.LastError = "Order not found";
+                            context.Saga.UpdatedAt = DateTime.UtcNow;
+                            await context.Publish(new OrderStatusChangeFailed(msg.CorrelationId, msg.OrderId, "Order not found"));
                             return;
                         }
 
                         if (order.Status == msg.NewStatus)
                         {
-                            await MassTransit.BehaviorContextExtensions.Publish(context, new OrderStatusChanged(msg.CorrelationId, order.Id, order.Status));
+                            await context.Publish(new OrderStatusChanged(msg.CorrelationId, order.Id, order.Status));
                             return;
                         }
 
                         if (!IsValidTransition(order.Status, msg.NewStatus))
                         {
                             var reason = $"Invalid transition from {order.Status} to {msg.NewStatus}";
-                            context.Instance.LastError = reason;
-                            context.Instance.UpdatedAt = DateTime.UtcNow;
-                            await MassTransit.BehaviorContextExtensions.Publish(context, new OrderStatusChangeFailed(msg.CorrelationId, order.Id, reason));
+                            context.Saga.LastError = reason;
+                            context.Saga.UpdatedAt = DateTime.UtcNow;
+                            await context.Publish(new OrderStatusChangeFailed(msg.CorrelationId, order.Id, reason));
                             return;
                         }
 
                         order.Status = msg.NewStatus;
                         await db.SaveChangesAsync(consumeContext.CancellationToken);
-                        context.Instance.OrderId = order.Id;
-                        context.Instance.UpdatedAt = DateTime.UtcNow;
-                        await MassTransit.BehaviorContextExtensions.Publish(context, new OrderStatusChanged(msg.CorrelationId, order.Id, msg.NewStatus));
+                        context.Saga.OrderId = order.Id;
+                        context.Saga.UpdatedAt = DateTime.UtcNow;
+                        await context.Publish(new OrderStatusChanged(msg.CorrelationId, order.Id, msg.NewStatus));
                     })
-                    .IfElse(context => string.IsNullOrEmpty(context.Instance.LastError),
+                    .IfElse(context => string.IsNullOrEmpty(context.Saga.LastError),
                         binder => binder.TransitionTo(Completed).Finalize(),
                         binder => binder.Finalize())
             );

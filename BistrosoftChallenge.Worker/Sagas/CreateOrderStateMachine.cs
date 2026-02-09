@@ -1,12 +1,7 @@
-using System;
-using System.Collections.Generic;
-using Automatonymous;
-using MassTransit;
 using BistrosoftChallenge.Domain.Entities;
 using BistrosoftChallenge.Infrastructure;
 using BistrosoftChallenge.MessageContracts;
-using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.DependencyInjection;
+using MassTransit;
 
 namespace BistrosoftChallenge.Worker.Sagas
 {
@@ -29,16 +24,16 @@ namespace BistrosoftChallenge.Worker.Sagas
                 When(CreateOrder)
                     .ThenAsync(async context =>
                     {
-                        var msg = context.Data;
+                        var msg = context.Message;
                         var consumeContext = context.GetPayload<ConsumeContext>();
-                        var db = consumeContext.GetRequiredService<AppDbContext>();
+                        var db = consumeContext.GetPayload<IServiceProvider>().GetRequiredService<AppDbContext>();
 
                         var customer = await db.Customers.FindAsync(new object[] { msg.CustomerId }, consumeContext.CancellationToken);
                         if (customer == null)
                         {
-                            context.Instance.LastError = "Customer not found";
-                            context.Instance.UpdatedAt = DateTime.UtcNow;
-                            await MassTransit.BehaviorContextExtensions.Publish(context, new OrderCreationFailed(msg.CorrelationId, msg.OrderId, "Customer not found"));
+                            context.Saga.LastError = "Customer not found";
+                            context.Saga.UpdatedAt = DateTime.UtcNow;
+                            await context.Publish(new OrderCreationFailed(msg.CorrelationId, msg.OrderId, "Customer not found"));
                             return;
                         }
 
@@ -49,9 +44,9 @@ namespace BistrosoftChallenge.Worker.Sagas
                         {
                             if (item.Quantity <= 0)
                             {
-                                context.Instance.LastError = "Product quantities must be greater than zero";
-                                context.Instance.UpdatedAt = DateTime.UtcNow;
-                                await MassTransit.BehaviorContextExtensions.Publish(context, new OrderCreationFailed(msg.CorrelationId, msg.OrderId, "Product quantities must be greater than zero"));
+                                context.Saga.LastError = "Product quantities must be greater than zero";
+                                context.Saga.UpdatedAt = DateTime.UtcNow;
+                                await context.Publish(new OrderCreationFailed(msg.CorrelationId, msg.OrderId, "Product quantities must be greater than zero"));
                                 return;
                             }
 
@@ -59,18 +54,18 @@ namespace BistrosoftChallenge.Worker.Sagas
                             if (product == null)
                             {
                                 var reason = $"Product {item.ProductId} not found";
-                                context.Instance.LastError = reason;
-                                context.Instance.UpdatedAt = DateTime.UtcNow;
-                                await MassTransit.BehaviorContextExtensions.Publish(context, new OrderCreationFailed(msg.CorrelationId, msg.OrderId, reason));
+                                context.Saga.LastError = reason;
+                                context.Saga.UpdatedAt = DateTime.UtcNow;
+                                await context.Publish(new OrderCreationFailed(msg.CorrelationId, msg.OrderId, reason));
                                 return;
                             }
 
                             if (product.StockQuantity < item.Quantity)
                             {
                                 var reason = $"Insufficient stock for product {product.Name}";
-                                context.Instance.LastError = reason;
-                                context.Instance.UpdatedAt = DateTime.UtcNow;
-                                await MassTransit.BehaviorContextExtensions.Publish(context, new OrderCreationFailed(msg.CorrelationId, msg.OrderId, reason));
+                                context.Saga.LastError = reason;
+                                context.Saga.UpdatedAt = DateTime.UtcNow;
+                                await context.Publish(new OrderCreationFailed(msg.CorrelationId, msg.OrderId, reason));
                                 return;
                             }
 
@@ -104,14 +99,14 @@ namespace BistrosoftChallenge.Worker.Sagas
                         db.Orders.Add(order);
                         await db.SaveChangesAsync(consumeContext.CancellationToken);
 
-                        context.Instance.OrderId = order.Id;
-                        context.Instance.CustomerId = order.CustomerId;
-                        context.Instance.CreatedAt = DateTime.UtcNow;
-                        context.Instance.UpdatedAt = DateTime.UtcNow;
+                        context.Saga.OrderId = order.Id;
+                        context.Saga.CustomerId = order.CustomerId;
+                        context.Saga.CreatedAt = DateTime.UtcNow;
+                        context.Saga.UpdatedAt = DateTime.UtcNow;
 
-                        await MassTransit.BehaviorContextExtensions.Publish(context, new OrderCreated(msg.CorrelationId, order.Id, order.TotalAmount));
+                        await context.Publish(new OrderCreated(msg.CorrelationId, order.Id, order.TotalAmount));
                     })
-                    .IfElse(context => string.IsNullOrEmpty(context.Instance.LastError),
+                    .IfElse(context => string.IsNullOrEmpty(context.Saga.LastError),
                         binder => binder.TransitionTo(Created).Finalize(),
                         binder => binder.Finalize())
             );

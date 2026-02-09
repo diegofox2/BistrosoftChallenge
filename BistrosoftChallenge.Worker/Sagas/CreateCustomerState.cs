@@ -1,4 +1,4 @@
-using Automatonymous;
+using System;
 using MassTransit;
 
 namespace BistrosoftChallenge.Worker.Sagas

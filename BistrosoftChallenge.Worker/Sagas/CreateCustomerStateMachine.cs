@@ -1,5 +1,4 @@
 using System;
-using Automatonymous;
 using MassTransit;
 using BistrosoftChallenge.MessageContracts;
 using BistrosoftChallenge.Infrastructure;
@@ -28,24 +27,24 @@ namespace BistrosoftChallenge.Worker.Sagas
                 When(CreateCustomer)
                     .ThenAsync(async context =>
                     {
-                        var msg = context.Data;
+                        var msg = context.Message;
                         var consumeContext = context.GetPayload<ConsumeContext>();
-                        var db = consumeContext.GetRequiredService<AppDbContext>();
+                        var db = consumeContext.GetPayload<IServiceProvider>().GetRequiredService<AppDbContext>();
 
                         var emailTaken = await db.Customers.AnyAsync(c => c.Email == msg.Email, consumeContext.CancellationToken);
                         if (emailTaken)
                         {
-                            context.Instance.LastError = "Email already exists";
-                            context.Instance.UpdatedAt = DateTime.UtcNow;
-                            await MassTransit.BehaviorContextExtensions.Publish(context, new CustomerCreationFailed(msg.CorrelationId, "Email already exists"));
+                            context.Saga.LastError = "Email already exists";
+                            context.Saga.UpdatedAt = DateTime.UtcNow;
+                            await context.Publish(new CustomerCreationFailed(msg.CorrelationId, "Email already exists"));
                             return;
                         }
 
                         var existingCustomer = await db.Customers.FindAsync(new object[] { msg.CustomerId }, consumeContext.CancellationToken);
                         if (existingCustomer != null)
                         {
-                            context.Instance.CustomerId = existingCustomer.Id;
-                            context.Instance.UpdatedAt = DateTime.UtcNow;
+                            context.Saga.CustomerId = existingCustomer.Id;
+                            context.Saga.UpdatedAt = DateTime.UtcNow;
                             return;
                         }
 
@@ -60,13 +59,13 @@ namespace BistrosoftChallenge.Worker.Sagas
                         db.Customers.Add(customer);
                         await db.SaveChangesAsync(consumeContext.CancellationToken);
 
-                        context.Instance.CustomerId = customer.Id;
-                        context.Instance.CreatedAt = DateTime.UtcNow;
-                        context.Instance.UpdatedAt = DateTime.UtcNow;
+                        context.Saga.CustomerId = customer.Id;
+                        context.Saga.CreatedAt = DateTime.UtcNow;
+                        context.Saga.UpdatedAt = DateTime.UtcNow;
 
-                        await MassTransit.BehaviorContextExtensions.Publish(context, new CustomerCreated(msg.CorrelationId, customer.Id));
+                        await context.Publish(new CustomerCreated(msg.CorrelationId, customer.Id));
                     })
-                    .IfElse(context => string.IsNullOrEmpty(context.Instance.LastError),
+                    .IfElse(context => string.IsNullOrEmpty(context.Saga.LastError),
                         binder => binder.TransitionTo(Created).Finalize(),
                         binder => binder.Finalize())
             );

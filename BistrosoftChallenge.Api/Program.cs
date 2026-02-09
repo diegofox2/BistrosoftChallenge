@@ -10,6 +10,7 @@ using Microsoft.IdentityModel.Tokens;
 using System.Text;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc.Authorization;
+using BistrosoftChallenge.Api.Middleware;
 
 namespace BistrosoftChallenge
 {
@@ -50,6 +51,7 @@ namespace BistrosoftChallenge
                 });
 
             builder.Services.AddAuthorization();
+            builder.Services.AddHttpClient();
 
             builder.Services.AddSwaggerGen(c =>
             {
@@ -122,6 +124,8 @@ namespace BistrosoftChallenge
             });
 
             var app = builder.Build();
+
+            app.UseMiddleware<GlobalExceptionMiddleware>();
 
             // Validate schema compatibility on startup
             using (var scope = app.Services.CreateScope())

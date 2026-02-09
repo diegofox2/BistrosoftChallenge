@@ -4,6 +4,7 @@ using BistrosoftChallenge.Domain.Entities;
 using BistrosoftChallenge.Infrastructure;
 using BistrosoftChallenge.MessageContracts;
 using BistrosoftChallenge.Worker.Sagas;
+using BistrosoftChallenge.Infrastructure.SagaStates;
 using MassTransit;
 using MassTransit.Testing;
 using Microsoft.EntityFrameworkCore;

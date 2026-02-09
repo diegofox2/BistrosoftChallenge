@@ -1,4 +1,5 @@
 using System;
+using BistrosoftChallenge.Infrastructure.SagaStates;
 using MassTransit;
 using BistrosoftChallenge.MessageContracts;
 using BistrosoftChallenge.Infrastructure;

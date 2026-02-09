@@ -1,4 +1,5 @@
 using BistrosoftChallenge.Domain.Entities;
+using BistrosoftChallenge.Infrastructure.SagaStates;
 using BistrosoftChallenge.Infrastructure;
 using BistrosoftChallenge.MessageContracts;
 using MassTransit;

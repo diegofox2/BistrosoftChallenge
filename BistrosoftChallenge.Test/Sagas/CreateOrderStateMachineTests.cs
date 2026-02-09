@@ -6,6 +6,7 @@ using Microsoft.Extensions.DependencyInjection;
 using MassTransit;
 using MassTransit.Testing;
 using BistrosoftChallenge.Worker.Sagas;
+using BistrosoftChallenge.Infrastructure.SagaStates;
 using BistrosoftChallenge.Infrastructure;
 using Microsoft.EntityFrameworkCore;
 using BistrosoftChallenge.MessageContracts;

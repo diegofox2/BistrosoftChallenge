@@ -1,5 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using BistrosoftChallenge.Domain.Entities;
+using MassTransit;
+using BistrosoftChallenge.Infrastructure.SagaStates;
 
 namespace BistrosoftChallenge.Infrastructure
 {
@@ -17,6 +19,14 @@ namespace BistrosoftChallenge.Infrastructure
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
+
+            modelBuilder.AddInboxStateEntity();
+            modelBuilder.AddOutboxMessageEntity();
+            modelBuilder.AddOutboxStateEntity();
+
+            modelBuilder.Entity<CreateCustomerState>().HasKey(x => x.CorrelationId);
+            modelBuilder.Entity<CreateOrderState>().HasKey(x => x.CorrelationId);
+            modelBuilder.Entity<ChangeOrderStatusState>().HasKey(x => x.CorrelationId);
 
             modelBuilder.Entity<Customer>(b =>
             {

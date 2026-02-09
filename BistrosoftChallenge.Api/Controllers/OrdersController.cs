@@ -2,6 +2,7 @@ using System;
 using System.Linq;
 using Microsoft.AspNetCore.Mvc;
 using BistrosoftChallenge.MessageContracts;
+using BistrosoftChallenge.Infrastructure;
 using BistrosoftChallenge.Infrastructure.Repositories;
 using BistrosoftChallenge.Domain.Entities;
 using MassTransit;
@@ -14,11 +15,13 @@ namespace BistrosoftChallenge.Api.Controllers
     {
         private readonly IPublishEndpoint _publishEndpoint;
         private readonly IProductRepository _productRepository;
+        private readonly AppDbContext _dbContext;
 
-        public OrdersController(IPublishEndpoint publishEndpoint, IProductRepository productRepository)
+        public OrdersController(IPublishEndpoint publishEndpoint, IProductRepository productRepository, AppDbContext dbContext)
         {
             _publishEndpoint = publishEndpoint;
             _productRepository = productRepository;
+            _dbContext = dbContext;
         }
 
         [HttpPost]
@@ -33,6 +36,7 @@ namespace BistrosoftChallenge.Api.Controllers
             var items = req.Items.Select(i => new OrderItemDto(i.ProductId, i.Quantity)).ToArray();
             var command = new CreateOrderCommand(Guid.NewGuid(), orderId, req.CustomerId, items);
             await _publishEndpoint.Publish(command);
+            await _dbContext.SaveChangesAsync();
 
             var totalAmount = 0m;
             foreach (var item in items)
@@ -52,6 +56,7 @@ namespace BistrosoftChallenge.Api.Controllers
         public async Task<IActionResult> UpdateStatus(Guid id, [FromBody] ChangeOrderStatusRequest req)
         {
             await _publishEndpoint.Publish(new ChangeOrderStatusCommand(Guid.NewGuid(), id, req.NewStatus));
+            await _dbContext.SaveChangesAsync();
             return Ok(new OrderStatusResponse(id, req.NewStatus));
         }
     }

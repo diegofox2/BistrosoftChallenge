@@ -1,4 +1,5 @@
 using BistrosoftChallenge.Domain.Entities;
+using BistrosoftChallenge.Infrastructure;
 using BistrosoftChallenge.Infrastructure.Repositories;
 using BistrosoftChallenge.MessageContracts;
 using MassTransit;
@@ -13,12 +14,14 @@ namespace BistrosoftChallenge.Api.Controllers
         private readonly ICustomerRepository _repo;
         private readonly IOrderRepository _orderRepository;
         private readonly IPublishEndpoint _publishEndpoint;
+        private readonly AppDbContext _dbContext;
 
-        public CustomersController(ICustomerRepository repo, IOrderRepository orderRepository, IPublishEndpoint publishEndpoint)
+        public CustomersController(ICustomerRepository repo, IOrderRepository orderRepository, IPublishEndpoint publishEndpoint, AppDbContext dbContext)
         {
             _repo = repo;
             _orderRepository = orderRepository;
             _publishEndpoint = publishEndpoint;
+            _dbContext = dbContext;
         }
 
         [HttpPost]
@@ -27,6 +30,8 @@ namespace BistrosoftChallenge.Api.Controllers
             var id = Guid.NewGuid();
             var cmd = new CreateCustomerCommand(Guid.NewGuid(), id, req.Name, req.Email, req.PhoneNumber);
             await _publishEndpoint.Publish(cmd);
+            await _dbContext.SaveChangesAsync();
+
             return CreatedAtAction(nameof(Get), new { id }, new { id, req.Name, req.Email, req.PhoneNumber });
         }
 

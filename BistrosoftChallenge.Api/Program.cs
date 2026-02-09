@@ -101,6 +101,12 @@ namespace BistrosoftChallenge
             // MassTransit - use RabbitMQ for cross-process messaging (fallback to in-memory if not configured)
             builder.Services.AddMassTransit(x =>
             {
+                x.AddEntityFrameworkOutbox<AppDbContext>(o =>
+                {
+                    o.UseSqlServer();
+                    o.UseBusOutbox();
+                });
+
                 var rabbitHost = builder.Configuration["RabbitMq:Host"];
                 if (!string.IsNullOrEmpty(rabbitHost))
                 {

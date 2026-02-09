@@ -35,6 +35,21 @@ Este proyecto usa `MassTransit` (ver `BistrosoftChallenge.Worker` y `BistrosoftC
 
 `MediatR` es excelente como mediator in-process para desacoplar capas dentro de una misma aplicación monolítica, pero no proporciona transporte, durabilidad ni herramientas de orquestación distribuida. Para un escenario que exige sagas persistentes, mensajes fiables y separación API/Worker, `MassTransit` ofrece beneficios superiores y evita tener que construir manualmente componentes críticos (cola, reintentos, escalado, telemetría, etc.).
 
+Consecuencias prácticas y por qué verás `await _dbContext.SaveChangesAsync()` después de `Publish` en los controllers:
+
+- Publish + Outbox = persistencia local:
+  - Llamar `_publishEndpoint.Publish(cmd)` con el Outbox activado **no** envía inmediatamente el mensaje al broker.
+  - En su lugar, MassTransit genera una entrada de outbox asociada al `AppDbContext` (una fila que representa el mensaje a enviar) y la mantiene en memoria ligada al contexto.
+- `SaveChangesAsync()` persiste esa entrada en la base de datos:
+  - Si no llamas a `SaveChangesAsync()`, la entrada de outbox no se guardará y el mensaje nunca será despachado.
+  - Por eso en el controller verás `await _publishEndpoint.Publish(cmd);` seguido de `await _dbContext.SaveChangesAsync();`.
+- `UseBusOutbox()` — despacho coordinado en el mismo proceso:
+  - Con `UseBusOutbox()`, justo después de que `SaveChanges` termine, MassTransit utiliza la misma instancia del bus para despachar los mensajes que se acaban de persistir. Es el patrón "bus outbox": persistencia y despacho coordinarse para garantizar atomicidad aparente entre persistencia y mensajería.
+- Alternativa: dispatcher basado en BD (external dispatcher):
+  - Si se elimina `UseBusOutbox()`, el outbox escribe mensajes en la tabla de outbox y un proceso/dispatcher separado (o un worker que lea esa tabla) es responsable de publicar esos mensajes al broker. Sigue requiriendo `SaveChangesAsync()` para persistir la entrada.
+- Transporte en memoria vs broker real:
+  - Si `RabbitMq:Host` no está configurado, la app usa `UsingInMemory` — los mensajes se entregan sólo dentro del mismo proceso. En ese caso, aunque el outbox despache, no saldrá a un broker externo. Para mensajería interprocesos necesita RabbitMQ u otro transporte configurado.
+
 ## Sagas: qué son y por qué son importantes
 
 Una saga (o state machine) es un patrón para orquestar procesos de larga duración y/o que implican varios servicios/actores. Características y beneficios:

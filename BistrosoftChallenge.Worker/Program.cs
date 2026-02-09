@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using BistrosoftChallenge.Infrastructure;
 using BistrosoftChallenge.Worker.Sagas;
+using BistrosoftChallenge.Infrastructure.SagaStates;
 
 namespace BistrosoftChallenge.Worker
 {
@@ -30,14 +31,32 @@ namespace BistrosoftChallenge.Worker
 
             builder.Services.AddMassTransit(cfg =>
             {
+                cfg.AddEntityFrameworkOutbox<AppDbContext>(o =>
+                {
+                    o.UseSqlServer();
+                    o.UseBusOutbox();
+                });
+
                 cfg.AddSagaStateMachine<CreateCustomerStateMachine, CreateCustomerState>()
-                    .InMemoryRepository();
+                    .EntityFrameworkRepository(r =>
+                    {
+                        r.ExistingDbContext<AppDbContext>();
+                        r.UseSqlServer();
+                    });
 
                 cfg.AddSagaStateMachine<CreateOrderStateMachine, CreateOrderState>()
-                    .InMemoryRepository();
+                    .EntityFrameworkRepository(r =>
+                    {
+                        r.ExistingDbContext<AppDbContext>();
+                        r.UseSqlServer();
+                    });
 
                 cfg.AddSagaStateMachine<ChangeOrderStatusStateMachine, ChangeOrderStatusState>()
-                    .InMemoryRepository();
+                    .EntityFrameworkRepository(r =>
+                    {
+                        r.ExistingDbContext<AppDbContext>();
+                        r.UseSqlServer();
+                    });
 
                 var rabbitHost = builder.Configuration["RabbitMq:Host"];
                 if (!string.IsNullOrEmpty(rabbitHost))

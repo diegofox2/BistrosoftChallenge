@@ -15,6 +15,9 @@
     <PackageReference Include="Swashbuckle.AspNetCore" Version="6.6.2" />
   </ItemGroup>
   <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.0" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="..\BistrosoftChallenge.Infrastructure\BistrosoftChallenge.Infrastructure.csproj" />
     <ProjectReference Include="..\BistrosoftChallenge.MessageContracts\BistrosoftChallenge.MessageContracts.csproj" />
   </ItemGroup>

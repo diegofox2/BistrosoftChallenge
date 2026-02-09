@@ -1,0 +1,25 @@
+sequenceDiagram
+    participant Client
+    participant OrdersController as "OrdersController (BistrosoftChallenge.Api)"
+    participant IPublishEndpoint as "IPublishEndpoint"
+    participant MassTransit as "MassTransit Bus"
+    participant RabbitMQ as "Broker (e.g., RabbitMQ)"
+    participant CreateOrderSaga as "CreateOrderStateMachine (BistrosoftChallenge.Worker.Sagas)"
+    participant AppDbContext as "AppDbContext (EF Core)"
+
+    Client->>OrdersController: POST /api/orders (body: CreateOrderRequest)
+    OrdersController->>IPublishEndpoint: Publish CreateOrderCommand(correlationId, orderId, customerId, items)
+    IPublishEndpoint->>MassTransit: Enqueue message onto bus
+    MassTransit->>RabbitMQ: Serialize & route to exchange / queue
+    RabbitMQ->>CreateOrderSaga: Deliver CreateOrderCommand to saga queue
+    CreateOrderSaga->>CreateOrderSaga: Consume CreateOrderCommand (Event<CreateOrderCommand>)
+    CreateOrderSaga->>AppDbContext: Load Customer and Products, validate stock & quantities
+    alt Validation fails (customer missing, product missing, or insufficient stock)
+        CreateOrderSaga->>RabbitMQ: Publish OrderCreationFailed(correlationId, orderId, reason)
+        CreateOrderSaga->>CreateOrderSaga: Finalize saga with LastError
+    else Validation succeeds
+        CreateOrderSaga->>AppDbContext: Create Order + OrderItems, decrement Product.StockQuantity, SaveChanges
+        CreateOrderSaga->>RabbitMQ: Publish OrderCreated(correlationId, orderId, totalAmount)
+        CreateOrderSaga->>CreateOrderSaga: Transition to Created and finalize
+    end
+    CreateOrderSaga->>RabbitMQ: Acknowledge message processing (ACK)

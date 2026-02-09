@@ -4,5 +4,8 @@
   <Project Path="BistrosoftChallenge.MessageContracts/BistrosoftChallenge.MessageContracts.csproj" Id="7fbe48d3-ec44-4525-b3c0-9f0eabc7c936" />
   <Project Path="BistrosoftChallenge.Test/BistrosoftChallenge.Worker.Test.csproj" Id="bd0c6650-b2a1-4967-ab1a-f633c1ff74ff" />
   <Project Path="BistrosoftChallenge.Worker/BistrosoftChallenge.Worker.csproj" Id="bef0cbed-3cf7-455d-abd2-9788369c6998" />
+  <Folder Name="/Solition Items/">
+    <File Path="Sequence Diagram.mmd" />
+  </Folder>
   <Project Path="BistrosoftChallenge.Api/BistrosoftChallenge.Api.csproj" />
 </Solution>

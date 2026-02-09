@@ -1,3 +1,7 @@
+using System;
+using System.Collections.Generic;
+using System.Threading.Tasks;
+using BistrosoftChallenge.Domain.Entities;
 using Microsoft.EntityFrameworkCore;
 
 namespace BistrosoftChallenge.Infrastructure.Schema
@@ -11,10 +15,22 @@ namespace BistrosoftChallenge.Infrastructure.Schema
             _dbContext = dbContext;
         }
 
-        public void Validate()
+        public async Task Validate()
         {
-            // Compare EF model with database schema by checking that all tables and columns exist.
-            // This is a minimal implementation: ensure that every entity's table exists and has at least one column.
+            // Skip validation when using InMemory provider because it does not expose a relational DbConnection.
+            var provider = _dbContext.Database.ProviderName;
+            if (provider != null && provider.Contains("InMemory", StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            // If the database does not exist or cannot be connected to, try to create it.
+            if (!_dbContext.Database.CanConnect())
+            {
+                _dbContext.Database.EnsureCreated();
+                _dbContext.Add<Product>(new Product { Name = "Sample", Price = 0, StockQuantity = 10 });
+                await _dbContext.SaveChangesAsync();
+            }
 
             var conn = _dbContext.Database.GetDbConnection();
             conn.Open();

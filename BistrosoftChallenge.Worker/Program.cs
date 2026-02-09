@@ -39,10 +39,26 @@ namespace BistrosoftChallenge.Worker
                 cfg.AddSagaStateMachine<ChangeOrderStatusStateMachine, ChangeOrderStatusState>()
                     .InMemoryRepository();
 
-                cfg.UsingInMemory((context, rc) =>
+                var rabbitHost = builder.Configuration["RabbitMq:Host"];
+                if (!string.IsNullOrEmpty(rabbitHost))
                 {
-                    rc.ConfigureEndpoints(context);
-                });
+                    cfg.UsingRabbitMq((context, rc) =>
+                    {
+                        rc.Host(rabbitHost, h =>
+                        {
+                            h.Username(builder.Configuration["RabbitMq:Username"] ?? "guest");
+                            h.Password(builder.Configuration["RabbitMq:Password"] ?? "guest");
+                        });
+                        rc.ConfigureEndpoints(context);
+                    });
+                }
+                else
+                {
+                    cfg.UsingInMemory((context, rc) =>
+                    {
+                        rc.ConfigureEndpoints(context);
+                    });
+                }
             });
 
             var host = builder.Build();

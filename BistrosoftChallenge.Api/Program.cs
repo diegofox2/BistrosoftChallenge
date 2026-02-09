@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.OpenApi.Models;
 using BistrosoftChallenge.Infrastructure;
 using BistrosoftChallenge.Infrastructure.Repositories;
 using BistrosoftChallenge.Infrastructure.Schema;
@@ -17,7 +18,10 @@ namespace BistrosoftChallenge
             builder.Services.AddControllers();
             // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
             builder.Services.AddEndpointsApiExplorer();
-            builder.Services.AddSwaggerGen();
+            builder.Services.AddSwaggerGen(c =>
+            {
+                c.SwaggerDoc("v1", new OpenApiInfo { Title = "BistrosoftChallenge API", Version = "v1" });
+            });
 
             // DbContext - use configuration or in-memory for now
             builder.Services.AddDbContext<AppDbContext>(options =>
@@ -32,19 +36,36 @@ namespace BistrosoftChallenge
                     options.UseInMemoryDatabase("dev");
                 }
             });
+            builder.Services.AddScoped<DbContext>(sp => sp.GetRequiredService<AppDbContext>());
 
             builder.Services.AddScoped<ICustomerRepository, CustomerRepository>();
             builder.Services.AddScoped<IProductRepository, ProductRepository>();
             builder.Services.AddScoped<IOrderRepository, OrderRepository>();
             builder.Services.AddScoped<SchemaCompatibilityValidator>();
 
-            // MassTransit - minimal setup for sending commands
+            // MassTransit - use RabbitMQ for cross-process messaging (fallback to in-memory if not configured)
             builder.Services.AddMassTransit(x =>
             {
-                x.UsingInMemory((context, cfg) =>
+                var rabbitHost = builder.Configuration["RabbitMq:Host"];
+                if (!string.IsNullOrEmpty(rabbitHost))
                 {
-                    cfg.ConfigureEndpoints(context);
-                });
+                    x.UsingRabbitMq((context, cfg) =>
+                    {
+                        cfg.Host(rabbitHost, h =>
+                        {
+                            h.Username(builder.Configuration["RabbitMq:Username"] ?? "guest");
+                            h.Password(builder.Configuration["RabbitMq:Password"] ?? "guest");
+                        });
+                        cfg.ConfigureEndpoints(context);
+                    });
+                }
+                else
+                {
+                    x.UsingInMemory((context, cfg) =>
+                    {
+                        cfg.ConfigureEndpoints(context);
+                    });
+                }
             });
 
             var app = builder.Build();
@@ -60,7 +81,12 @@ namespace BistrosoftChallenge
             if (app.Environment.IsDevelopment())
             {
                 app.UseSwagger();
-                app.UseSwaggerUI();
+                app.UseSwaggerUI(c =>
+                {
+                    c.SwaggerEndpoint("/swagger/v1/swagger.json", "BistrosoftChallenge API v1");
+                    // keep the default UI path at /swagger
+                    c.RoutePrefix = "swagger";
+                });
             }
 
             app.UseHttpsRedirection();

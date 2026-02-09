@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RunSettings>
+  <RunConfiguration>
+    <!-- Explicit target framework for test platforms -->
+    <TargetFrameworkVersion>net8.0</TargetFrameworkVersion>
+    <!-- Force x64 to match environment used by testhost if needed -->
+    <TargetPlatform>x64</TargetPlatform>
+    <!-- Allow test adapters to run discovery without parallelizing across assemblies -->
+    <MaxCpuCount>0</MaxCpuCount>
+  </RunConfiguration>
+</RunSettings>

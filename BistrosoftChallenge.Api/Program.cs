@@ -53,6 +53,17 @@ namespace BistrosoftChallenge
             builder.Services.AddAuthorization();
             builder.Services.AddHttpClient();
 
+            // Add CORS policy to allow requests from any origin (for development / broad access)
+            builder.Services.AddCors(options =>
+            {
+                options.AddPolicy("AllowAll", policy =>
+                {
+                    policy.AllowAnyOrigin()
+                          .AllowAnyMethod()
+                          .AllowAnyHeader();
+                });
+            });
+
             builder.Services.AddSwaggerGen(c =>
             {
                 c.SwaggerDoc("v1", new OpenApiInfo { Title = "BistrosoftChallenge API", Version = "v1" });
@@ -153,6 +164,9 @@ namespace BistrosoftChallenge
             }
 
             app.UseHttpsRedirection();
+
+            // Enable CORS to allow requests from any origin
+            app.UseCors("AllowAll");
             app.UseAuthentication();
             app.UseAuthorization();
             app.MapControllers();

@@ -28,7 +28,7 @@ namespace BistrosoftChallenge.Infrastructure.Schema
             if (!_dbContext.Database.CanConnect())
             {
                 _dbContext.Database.EnsureCreated();
-                _dbContext.Add<Product>(new Product { Name = "Sample", Price = 0, StockQuantity = 10 });
+                _dbContext.Add<Product>(new Product { Name = "Sample", Price = 100, StockQuantity = 10 });
                 await _dbContext.SaveChangesAsync();
             }
 

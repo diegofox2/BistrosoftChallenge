@@ -1,10 +1,8 @@
+using BistrosoftChallenge.Infrastructure;
+using BistrosoftChallenge.Infrastructure.SagaStates;
+using BistrosoftChallenge.Worker.Sagas;
 using MassTransit;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
-using BistrosoftChallenge.Infrastructure;
-using BistrosoftChallenge.Worker.Sagas;
-using BistrosoftChallenge.Infrastructure.SagaStates;
 
 namespace BistrosoftChallenge.Worker
 {

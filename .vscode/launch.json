@@ -3,7 +3,8 @@
   "compounds": [
     {
       "name": "Launch API and Worker",
-      "configurations": ["Launch API", "Launch Worker"]
+      "configurations": ["Launch API", "Launch Worker"],
+      "preLaunchTask": "build"
     }
   ],
   "configurations": [
@@ -21,7 +22,8 @@
       },
       "serverReadyAction": {
         "action": "openExternally",
-        "pattern": "\\bNow listening on:\\s+(https?://\\S+)"
+        "pattern": "\\bNow listening on:\\s+(https?://\\S+)",
+        "uriFormat": "%s/swagger"
       }
     },
     {

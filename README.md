@@ -1,139 +1,139 @@
 # BistrosoftChallenge
 
-## Resumen
+## Summary
 
-Proyecto ejemplo que ilustra una arquitectura dividida en capas, mensajería distribuida con MassTransit y sagas para orquestación de cambios de estado (CQRS implícito). Contiene una API web, un worker (procesador de sagas) y una librería de dominio e infraestructura.
+Example project illustrating a layered architecture, distributed messaging with MassTransit, and sagas for orchestrating state changes (implicit CQRS). It contains a web API, a worker (saga processor), and a domain and infrastructure library.
 
-## Estructura del repositorio
+## Repository Structure
 
-- `BistrosoftChallenge.Api/` — API HTTP (Controllers, autenticación, Swagger, middleware).
-- `BistrosoftChallenge.Worker/` — Worker que corre `MassTransit` y las sagas (state machines).
-- `BistrosoftChallenge.Domain/` — Entidades de dominio (`Customer`, `Order`, `Product`, `OrderStatus`).
-- `BistrosoftChallenge.Infrastructure/` — `AppDbContext`, repositorios y lógica de persistencia.
-- `BistrosoftChallenge.MessageContracts/` — Contratos de mensajes para mensajería entre procesos.
-- `BistrosoftChallenge.Test/` — Tests de unidad/integración.
+- `BistrosoftChallenge.Api/` — HTTP API (Controllers, authentication, Swagger, middleware).
+- `BistrosoftChallenge.Worker/` — Worker that runs `MassTransit` and the sagas (state machines).
+- `BistrosoftChallenge.Domain/` — Domain entities (`Customer`, `Order`, `Product`, `OrderStatus`).
+- `BistrosoftChallenge.Infrastructure/` — `AppDbContext`, repositories, and persistence logic.
+- `BistrosoftChallenge.MessageContracts/` — Message contracts for inter-process messaging.
+- `BistrosoftChallenge.Test/` — Unit/integration tests.
 
-## Arquitectura (alto nivel)
+## Architecture (High Level)
 
-La aplicación sigue una separación por capas clásica:
+The application follows a classic layered separation:
 
-- Capa API: recibe peticiones HTTP y publica comandos/eventos vía MassTransit.
-- Capa de Dominio: modelos y reglas de negocio.
-- Capa de Infraestructura: implementaciones concretas (EF Core `AppDbContext`, repositorios).
-- Worker/Mensajería: escucha mensajes, ejecuta sagas (orquestación de procesos de negocio) y actualiza el estado persistido.
+- API Layer: receives HTTP requests and publishes commands/events via MassTransit.
+- Domain Layer: models and business rules.
+- Infrastructure Layer: concrete implementations (EF Core `AppDbContext`, repositories).
+- Worker/Messaging: listens for messages, executes sagas (orchestration of business processes), and updates persisted state.
 
-Las modificaciones de estado del sistema se llevan adelante por medio de sagas en el worker, lo que constituye un CQRS implícito: la API actúa como punto de entrada para comandos (y consulta rápida por la BD), mientras que los cambios que requieren coordinación distribuida se ejecutan por las sagas.
+State changes in the system are driven by sagas in the worker, which constitutes implicit CQRS: the API acts as an entry point for commands (and fast DB queries), while changes requiring distributed coordination are executed by the sagas.
 
 ## MassTransit vs MediatR
 
-Este proyecto usa `MassTransit` (ver `BistrosoftChallenge.Worker` y `BistrosoftChallenge.Api`), no `MediatR`, porque necesitamos un bus de mensajes completo y resiliente:
+This project uses `MassTransit` (see `BistrosoftChallenge.Worker` and `BistrosoftChallenge.Api`), not `MediatR`, because a full, resilient message bus is needed:
 
-- **Mensajería distribuida real**: `MassTransit` abstrae transports como RabbitMQ, Azure Service Bus o un bus in-memory, permitiendo que la API publique eventos/comandos que serán procesados por otros procesos sin dependencia directa. `MediatR` sólo enruta mensajes dentro del mismo proceso.
-- **Soporte nativo para Sagas / State Machines**: `MassTransit` provee `MassTransitStateMachine<T>` con persistencia (EF Core, Mongo, etc.), timers, compensaciones y correlación automática. Es la base de la orquestación CQRS implícita del proyecto.
-- **Características de bus empresarial**: incluye middleware para retries configurables, circuit breakers, outbox/inbox, enrutamiento topológico, priorización y observabilidad (diagnostics, OpenTelemetry). Estos elementos son claves para garantizar idempotencia, telemetría clara y resiliencia.
-- **Escalabilidad y aislamiento**: los consumidores pueden ejecutarse en múltiples instancias del worker y el broker balancea la carga; además se pueden versionar mensajes y evolucionar la topología sin interrumpir el API.
+- **Real distributed messaging**: `MassTransit` abstracts transports such as RabbitMQ, Azure Service Bus, or an in-memory bus, allowing the API to publish events/commands that will be processed by other processes without direct dependency. `MediatR` only routes messages within the same process.
+- **Native Saga / State Machine support**: `MassTransit` provides `MassTransitStateMachine<T>` with persistence (EF Core, Mongo, etc.), timers, compensations, and automatic correlation. It is the foundation of the project's implicit CQRS orchestration.
+- **Enterprise bus features**: includes middleware for configurable retries, circuit breakers, outbox/inbox, topological routing, prioritization, and observability (diagnostics, OpenTelemetry). These elements are key to ensuring idempotency, clear telemetry, and resilience.
+- **Scalability and isolation**: consumers can run in multiple worker instances and the broker balances the load; messages can also be versioned and the topology evolved without interrupting the API.
 
-`MediatR` es excelente como mediator in-process para desacoplar capas dentro de una misma aplicación monolítica, pero no proporciona transporte, durabilidad ni herramientas de orquestación distribuida. Para un escenario que exige sagas persistentes, mensajes fiables y separación API/Worker, `MassTransit` ofrece beneficios superiores y evita tener que construir manualmente componentes críticos (cola, reintentos, escalado, telemetría, etc.).
+`MediatR` is excellent as an in-process mediator for decoupling layers within a monolithic application, but it does not provide transport, durability, or distributed orchestration tools. For a scenario that requires persistent sagas, reliable messages, and API/Worker separation, `MassTransit` offers superior benefits and avoids having to manually build critical components (queue, retries, scaling, telemetry, etc.).
 
-Consecuencias prácticas y por qué verás `await _dbContext.SaveChangesAsync()` después de `Publish` en los controllers:
+Practical implications and why you will see `await _dbContext.SaveChangesAsync()` after `Publish` in the controllers:
 
-- Publish + Outbox = persistencia local:
-  - Llamar `_publishEndpoint.Publish(cmd)` con el Outbox activado **no** envía inmediatamente el mensaje al broker.
-  - En su lugar, MassTransit genera una entrada de outbox asociada al `AppDbContext` (una fila que representa el mensaje a enviar) y la mantiene en memoria ligada al contexto.
-- `SaveChangesAsync()` persiste esa entrada en la base de datos:
-  - Si no llamas a `SaveChangesAsync()`, la entrada de outbox no se guardará y el mensaje nunca será despachado.
-  - Por eso en el controller verás `await _publishEndpoint.Publish(cmd);` seguido de `await _dbContext.SaveChangesAsync();`.
-- `UseBusOutbox()` — despacho coordinado en el mismo proceso:
-  - Con `UseBusOutbox()`, justo después de que `SaveChanges` termine, MassTransit utiliza la misma instancia del bus para despachar los mensajes que se acaban de persistir. Es el patrón "bus outbox": persistencia y despacho coordinarse para garantizar atomicidad aparente entre persistencia y mensajería.
-- Alternativa: dispatcher basado en BD (external dispatcher):
-  - Si se elimina `UseBusOutbox()`, el outbox escribe mensajes en la tabla de outbox y un proceso/dispatcher separado (o un worker que lea esa tabla) es responsable de publicar esos mensajes al broker. Sigue requiriendo `SaveChangesAsync()` para persistir la entrada.
-- Transporte en memoria vs broker real:
-  - Si `RabbitMq:Host` no está configurado, la app usa `UsingInMemory` — los mensajes se entregan sólo dentro del mismo proceso. En ese caso, aunque el outbox despache, no saldrá a un broker externo. Para mensajería interprocesos necesita RabbitMQ u otro transporte configurado.
+- Publish + Outbox = local persistence:
+  - Calling `_publishEndpoint.Publish(cmd)` with the Outbox enabled does **not** immediately send the message to the broker.
+  - Instead, MassTransit generates an outbox entry associated with the `AppDbContext` (a row representing the message to be sent) and keeps it in memory tied to the context.
+- `SaveChangesAsync()` persists that entry in the database:
+  - If you don't call `SaveChangesAsync()`, the outbox entry will not be saved and the message will never be dispatched.
+  - That is why in the controller you will see `await _publishEndpoint.Publish(cmd);` followed by `await _dbContext.SaveChangesAsync();`.
+- `UseBusOutbox()` — coordinated dispatch in the same process:
+  - With `UseBusOutbox()`, right after `SaveChanges` completes, MassTransit uses the same bus instance to dispatch the messages that were just persisted. This is the "bus outbox" pattern: persistence and dispatch are coordinated to guarantee apparent atomicity between persistence and messaging.
+- Alternative: DB-based dispatcher (external dispatcher):
+  - If `UseBusOutbox()` is removed, the outbox writes messages to the outbox table and a separate process/dispatcher (or a worker that reads that table) is responsible for publishing those messages to the broker. It still requires `SaveChangesAsync()` to persist the entry.
+- In-memory transport vs real broker:
+  - If `RabbitMq:Host` is not configured, the app uses `UsingInMemory` — messages are delivered only within the same process. In that case, even if the outbox dispatches, it will not reach an external broker. For inter-process messaging, RabbitMQ or another configured transport is required.
 
-## Sagas: qué son y por qué son importantes
+## Sagas: What They Are and Why They Matter
 
-Una saga (o state machine) es un patrón para orquestar procesos de larga duración y/o que implican varios servicios/actores. Características y beneficios:
+A saga (or state machine) is a pattern for orchestrating long-running processes and/or those involving multiple services/actors. Features and benefits:
 
-- Orquestación: coordinan una secuencia de pasos que pueden involucrar varios microservicios o componentes.
-- Tolerancia a fallos: permiten compensaciones y reintentos, manteniendo el sistema consistente ante fallos parciales.
-- Persistencia del estado: el progreso de la saga se persiste (p. ej. con EF Core), permitiendo continuar el flujo luego de reinicios.
-- Desacoplamiento: la API publica mensajes; el worker responde y ejecuta la lógica de coordinación fuera del request HTTP.
+- Orchestration: they coordinate a sequence of steps that can involve multiple microservices or components.
+- Fault tolerance: they allow compensations and retries, keeping the system consistent in the face of partial failures.
+- State persistence: the saga's progress is persisted (e.g. with EF Core), allowing the flow to continue after restarts.
+- Decoupling: the API publishes messages; the worker responds and executes coordination logic outside the HTTP request.
 
-En este proyecto las sagas se encuentran en `BistrosoftChallenge.Worker/Sagas` (ej. `CreateOrderStateMachine.cs`) y son la fuente de verdad para cambios de estado que requieren coordinación.
+In this project, sagas are located in `BistrosoftChallenge.Worker/Sagas` (e.g. `CreateOrderStateMachine.cs`) and are the source of truth for state changes that require coordination.
 
-## Manejo de excepciones globales
+## Global Exception Handling
 
-La API utiliza un middleware global: `BistrosoftChallenge.Api/Middleware/GlobalExceptionMiddleware.cs`. Comportamiento clave:
+The API uses a global middleware: `BistrosoftChallenge.Api/Middleware/GlobalExceptionMiddleware.cs`. Key behavior:
 
-- Captura cualquier excepción no manejada durante el pipeline HTTP.
-- Loguea el error con `ILogger`.
-- Intenta enviar un log externo (configurable) a SolarWinds si `SolarWinds:Url` y `SolarWinds:Token` están configurados.
-- Devuelve una respuesta JSON con `StatusCode = 500` y un mensaje general (por simplicidad incluye `exception.Message` en entorno de challenge; en producción se recomienda omitir detalles internos).
+- Catches any unhandled exception during the HTTP pipeline.
+- Logs the error with `ILogger`.
+- Attempts to send an external log (configurable) to SolarWinds if `SolarWinds:Url` and `SolarWinds:Token` are configured.
+- Returns a JSON response with `StatusCode = 500` and a general message (for simplicity it includes `exception.Message` in a challenge environment; in production it is recommended to omit internal details).
 
-Recomendaciones de producción:
+Production recommendations:
 
-- No retornar `exception.Message` al cliente; usar mensajes amigables y un `errorId` correlacionable con los logs.
-- Asegurar que el logging externo no bloquee la respuesta; usar colas o fire-and-forget bien controlados.
+- Do not return `exception.Message` to the client; use friendly messages and a `errorId` that can be correlated with logs.
+- Ensure that external logging does not block the response; use well-controlled queues or fire-and-forget patterns.
 
-Ver: [BistrosoftChallenge.Api/Middleware/GlobalExceptionMiddleware.cs](BistrosoftChallenge.Api/Middleware/GlobalExceptionMiddleware.cs)
+See: [BistrosoftChallenge.Api/Middleware/GlobalExceptionMiddleware.cs](BistrosoftChallenge.Api/Middleware/GlobalExceptionMiddleware.cs)
 
-## Seguridad
+## Security
 
-- Autenticación: la API usa JWT Bearer. La configuración se encuentra en `BistrosoftChallenge.Api/Program.cs` y usa `Jwt:Key` y `Jwt:Issuer` de `appsettings` o variables de entorno. En ausencia de configuración, se usa una clave por defecto para desarrollo.
-- Autorización: la API aplica una política global que requiere usuario autenticado por defecto; los endpoints que permiten acceso anónimo (p. ej. token) deben especificarlo explícitamente.
-- NuGet relevante: `Microsoft.AspNetCore.Authentication.JwtBearer` está referenciado en el proyecto API.
+- Authentication: the API uses JWT Bearer. The configuration is in `BistrosoftChallenge.Api/Program.cs` and uses `Jwt:Key` and `Jwt:Issuer` from `appsettings` or environment variables. In the absence of configuration, a default key is used for development.
+- Authorization: the API applies a global policy that requires an authenticated user by default; endpoints that allow anonymous access (e.g. token) must specify it explicitly.
+- Relevant NuGet: `Microsoft.AspNetCore.Authentication.JwtBearer` is referenced in the API project.
 
-Archivos clave: [BistrosoftChallenge.Api/Program.cs](BistrosoftChallenge.Api/Program.cs)
+Key files: [BistrosoftChallenge.Api/Program.cs](BistrosoftChallenge.Api/Program.cs)
 
-## Configuración y variables importantes
+## Configuration and Important Variables
 
-- `ConnectionStrings:Default` — cadena de conexión SQL Server. Si no está presente la aplicación usa una DB en memoria (útil para pruebas).
-- `Jwt:Key` y `Jwt:Issuer` — clave secreta y emisor para tokens JWT.
-- `RabbitMq:Host`, `RabbitMq:Username`, `RabbitMq:Password` — configuración del broker; si no se configuran, MassTransit usará transporte in-memory.
-- `SolarWinds:Url`, `SolarWinds:Token` — (opcional) para envío de logs desde el middleware global.
+- `ConnectionStrings:Default` — SQL Server connection string. If not present, the application uses an in-memory DB (useful for testing).
+- `Jwt:Key` and `Jwt:Issuer` — secret key and issuer for JWT tokens.
+- `RabbitMq:Host`, `RabbitMq:Username`, `RabbitMq:Password` — broker configuration; if not set, MassTransit will use in-memory transport.
+- `SolarWinds:Url`, `SolarWinds:Token` — (optional) for sending logs from the global middleware.
 
-## Inicialización y ejecución local
+## Local Setup and Execution
 
-Requisitos locales: .NET SDK (recomiendo la misma versión objetivo del proyecto), opcionalmente RabbitMQ si quiere probar mensajería real.
+Local requirements: .NET SDK (recommended: the same target version as the project), optionally RabbitMQ if you want to test real messaging.
 
-Comandos básicos desde la raíz del repositorio:
+Basic commands from the repository root:
 
 ```powershell
 dotnet build BistrosoftChallenge.slnx --configuration Debug
 
-# Ejecutar la API (puede usar Visual Studio/VS Code launch)
+# Run the API (you can also use Visual Studio/VS Code launch)
 dotnet run --project BistrosoftChallenge.Api
 
-# Ejecutar el worker
+# Run the worker
 dotnet run --project BistrosoftChallenge.Worker
 ```
 
-Notas:
+Notes:
 
-- Si no configura `ConnectionStrings:Default`, la aplicación usará una BD en memoria para facilitar pruebas.
-- Para activar RabbitMQ, configurar `RabbitMq:Host` (ej. `rabbitmq://localhost`) y credenciales.
+- If you do not configure `ConnectionStrings:Default`, the application will use an in-memory DB to facilitate testing.
+- To enable RabbitMQ, configure `RabbitMq:Host` (e.g. `rabbitmq://localhost`) and credentials.
 
-## Pruebas
+## Tests
 
-Ejecutar tests:
+Run tests:
 
 ```powershell
 dotnet test BistrosoftChallenge.Test
 ```
 
-Los tests de sagas utilizan `UseInMemoryDatabase` del proveedor EF Core InMemory ([BistrosoftChallenge.Test/Sagas](BistrosoftChallenge.Test/Sagas)) para montar un `AppDbContext` completo sin requerir SQL Server real. Esto permite pruebas integrales del flujo de mensajes y persistencia en memoria, obteniendo la misma API EF Core pero con aislamiento y velocidad.
+The saga tests use `UseInMemoryDatabase` from the EF Core InMemory provider ([BistrosoftChallenge.Test/Sagas](BistrosoftChallenge.Test/Sagas)) to set up a full `AppDbContext` without requiring a real SQL Server. This enables comprehensive tests of the message flow and in-memory persistence, using the same EF Core API but with isolation and speed.
 
-## Puntos de interés en el código
+## Points of Interest in the Code
 
-- Middleware de excepciones: [BistrosoftChallenge.Api/Middleware/GlobalExceptionMiddleware.cs](BistrosoftChallenge.Api/Middleware/GlobalExceptionMiddleware.cs)
-- Programación de MassTransit y configuración: [BistrosoftChallenge.Api/Program.cs](BistrosoftChallenge.Api/Program.cs) y [BistrosoftChallenge.Worker/Program.cs](BistrosoftChallenge.Worker/Program.cs)
+- Exception middleware: [BistrosoftChallenge.Api/Middleware/GlobalExceptionMiddleware.cs](BistrosoftChallenge.Api/Middleware/GlobalExceptionMiddleware.cs)
+- MassTransit setup and configuration: [BistrosoftChallenge.Api/Program.cs](BistrosoftChallenge.Api/Program.cs) and [BistrosoftChallenge.Worker/Program.cs](BistrosoftChallenge.Worker/Program.cs)
 - Sagas / State machines: [BistrosoftChallenge.Worker/Sagas](BistrosoftChallenge.Worker/Sagas)
-- Contexto de datos: [BistrosoftChallenge.Infrastructure/AppDbContext.cs](BistrosoftChallenge.Infrastructure/AppDbContext.cs)
+- Data context: [BistrosoftChallenge.Infrastructure/AppDbContext.cs](BistrosoftChallenge.Infrastructure/AppDbContext.cs)
 
-## Recomendaciones y siguientes pasos
+## Recommendations and Next Steps
 
-- En producción: mover secretos a un store seguro (Azure Key Vault, AWS Secrets Manager, etc.) y rotar claves.
-- Añadir una política de retención/consulta para logs y correlación (`traceId`/`correlationId`) en middleware y mensajes.
-- Considerar persistencia de sagas con `MassTransit.EntityFrameworkCore` (ya referenciado en el proyecto Worker) para durabilidad.
+- In production: move secrets to a secure store (Azure Key Vault, AWS Secrets Manager, etc.) and rotate keys.
+- Add a retention/query policy for logs and correlation (`traceId`/`correlationId`) in middleware and messages.
+- Consider saga persistence with `MassTransit.EntityFrameworkCore` (already referenced in the Worker project) for durability.
 
 ---

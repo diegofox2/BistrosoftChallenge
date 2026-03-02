@@ -35,6 +35,11 @@ namespace BistrosoftChallenge.Worker
                     o.UseBusOutbox();
                 });
 
+                cfg.AddConfigureEndpointsCallback((context, _, endpointConfigurator) =>
+                {
+                    endpointConfigurator.UseEntityFrameworkOutbox<AppDbContext>(context);
+                });
+
                 cfg.AddSagaStateMachine<CreateCustomerStateMachine, CreateCustomerState>()
                     .EntityFrameworkRepository(r =>
                     {

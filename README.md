@@ -61,6 +61,64 @@ Una saga (o state machine) es un patrón para orquestar procesos de larga duraci
 
 En este proyecto las sagas se encuentran en `BistrosoftChallenge.Worker/Sagas` (ej. `CreateOrderStateMachine.cs`) y son la fuente de verdad para cambios de estado que requieren coordinación.
 
+## Idempotencia y deduplicación (API + Worker + DB)
+
+Para evitar dobles creaciones de órdenes frente a reintentos HTTP, redelivery del broker o mensajes duplicados en escenarios con múltiples workers, se incorporó una estrategia de protección en varias capas:
+
+### 1) Idempotency key en API
+
+- Endpoint `POST /api/orders` acepta una clave de idempotencia:
+  - Header: `Idempotency-Key`
+  - Body: `idempotencyKey`
+- Si no llega una clave válida, la API responde `400 BadRequest`.
+- Antes de publicar `CreateOrderCommand`, la API consulta `Orders` por `IdempotencyKey`:
+  - Si ya existe, devuelve la orden existente (`200 OK`) y no vuelve a publicar.
+  - Si no existe, publica el comando con esa clave y persiste outbox con `SaveChangesAsync()`.
+
+Beneficio: protege contra doble submit del cliente y reintentos de red en el borde HTTP.
+
+### 2) Contrato de mensaje con clave de idempotencia
+
+- `CreateOrderCommand` ahora incluye `IdempotencyKey`.
+- Esa clave viaja desde API hasta la saga del worker para mantener la misma identidad lógica de operación.
+
+Beneficio: permite aplicar idempotencia de negocio también en el consumidor, no sólo en la API.
+
+### 3) Idempotencia de dominio en `CreateOrderStateMachine`
+
+Dentro de `CreateOrderStateMachine` se agregaron guardas idempotentes:
+
+- Al inicio del consumo, busca una orden existente por `IdempotencyKey` o `OrderId`.
+  - Si existe, no vuelve a crear orden ni descontar stock.
+  - Publica `OrderCreated` con la orden ya existente y finaliza flujo.
+- En la inserción, si hay carrera de concurrencia y ocurre colisión de clave única (`DbUpdateException`), reconsulta la orden existente y la trata como éxito idempotente.
+
+Beneficio: evita efectos duplicados de negocio (doble orden / doble descuento de stock) incluso bajo concurrencia entre workers.
+
+### 4) Restricción única en base de datos
+
+- `Order` incorpora `IdempotencyKey` persistido.
+- `AppDbContext` define índice único en `Orders.IdempotencyKey`.
+
+Beneficio: última línea de defensa fuerte a nivel base de datos ante carreras o duplicados extremos.
+
+### 5) Deduplicación de consumo en worker (MassTransit EF Outbox)
+
+- El worker aplica `UseEntityFrameworkOutbox<AppDbContext>` en endpoints.
+- Esto agrega deduplicación de consumo/publicación dentro del pipeline del consumidor.
+
+Beneficio: reduce reprocesamiento de mensajes redeliverados y evita publicaciones duplicadas de eventos.
+
+### Resultado práctico
+
+Con esta combinación, la creación de órdenes queda protegida en capas:
+
+- **Capa HTTP/API**: evita doble procesamiento por reintentos del cliente.
+- **Capa de mensajería/worker**: dedup de consumo y ejecución idempotente de saga.
+- **Capa DB**: unicidad por `IdempotencyKey` como protección definitiva.
+
+Esto mejora consistencia, reduce errores por duplicación y hace el sistema más robusto al escalar a múltiples instancias de worker.
+
 ## Manejo de excepciones globales
 
 La API utiliza un middleware global: `BistrosoftChallenge.Api/Middleware/GlobalExceptionMiddleware.cs`. Comportamiento clave:
@@ -91,6 +149,7 @@ Archivos clave: [BistrosoftChallenge.Api/Program.cs](BistrosoftChallenge.Api/Pro
 - `Jwt:Key` y `Jwt:Issuer` — clave secreta y emisor para tokens JWT.
 - `RabbitMq:Host`, `RabbitMq:Username`, `RabbitMq:Password` — configuración del broker; si no se configuran, MassTransit usará transporte in-memory.
 - `SolarWinds:Url`, `SolarWinds:Token` — (opcional) para envío de logs desde el middleware global.
+- `Idempotency-Key` (header HTTP en `POST /api/orders`) — clave recomendada para garantizar idempotencia en creación de órdenes.
 
 ## Inicialización y ejecución local
 

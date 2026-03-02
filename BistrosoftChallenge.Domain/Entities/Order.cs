@@ -6,6 +6,7 @@ namespace BistrosoftChallenge.Domain.Entities
     public class Order
     {
         public Guid Id { get; set; }
+        public Guid IdempotencyKey { get; set; }
         public Guid CustomerId { get; set; }
         public Customer? Customer { get; set; }
         public decimal TotalAmount { get; set; }

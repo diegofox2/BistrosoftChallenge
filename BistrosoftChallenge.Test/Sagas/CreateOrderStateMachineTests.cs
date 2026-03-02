@@ -72,7 +72,7 @@ namespace BistrosoftChallenge.Worker.Test.Sagas
             };
 
             // Act
-            await _harness.Bus.Publish(new CreateOrderCommand(correlationId, orderId, customer.Id, items));
+            await _harness.Bus.Publish(new CreateOrderCommand(correlationId, orderId, customer.Id, items, Guid.NewGuid()));
 
             // Assert
             Assert.IsTrue(await _harness.Consumed.Any<CreateOrderCommand>());
@@ -100,7 +100,7 @@ namespace BistrosoftChallenge.Worker.Test.Sagas
             var correlationId = orderId;
             var items = new List<OrderItemDto>();
 
-            await _harness.Bus.Publish(new CreateOrderCommand(correlationId, orderId, Guid.NewGuid(), items));
+            await _harness.Bus.Publish(new CreateOrderCommand(correlationId, orderId, Guid.NewGuid(), items, Guid.NewGuid()));
 
             Assert.IsTrue(await _harness.Published.Any<OrderCreationFailed>());
             var fail = (await _harness.Published.SelectAsync<OrderCreationFailed>().First()).Context.Message;
@@ -124,7 +124,7 @@ namespace BistrosoftChallenge.Worker.Test.Sagas
                 new OrderItemDto(product.Id, 2)
             };
 
-            await _harness.Bus.Publish(new CreateOrderCommand(correlationId, orderId, customer.Id, items));
+            await _harness.Bus.Publish(new CreateOrderCommand(correlationId, orderId, customer.Id, items, Guid.NewGuid()));
 
             Assert.IsTrue(await _harness.Published.Any<OrderCreationFailed>());
             var fail = (await _harness.Published.SelectAsync<OrderCreationFailed>().First()).Context.Message;

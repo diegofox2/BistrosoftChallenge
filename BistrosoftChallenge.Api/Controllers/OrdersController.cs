@@ -6,6 +6,7 @@ using BistrosoftChallenge.Infrastructure;
 using BistrosoftChallenge.Infrastructure.Repositories;
 using BistrosoftChallenge.Domain.Entities;
 using MassTransit;
+using Microsoft.EntityFrameworkCore;
 
 namespace BistrosoftChallenge.Api.Controllers
 {
@@ -25,16 +26,32 @@ namespace BistrosoftChallenge.Api.Controllers
         }
 
         [HttpPost]
-        public async Task<IActionResult> Create([FromBody] CreateOrderRequest req)
+        public async Task<IActionResult> Create([FromBody] CreateOrderRequest req, [FromHeader(Name = "Idempotency-Key")] Guid? idempotencyKey)
         {
             if (req.Items == null || req.Items.Length == 0)
             {
                 return BadRequest("An order must contain at least one item.");
             }
 
+            var effectiveIdempotencyKey = idempotencyKey ?? req.IdempotencyKey;
+            if (effectiveIdempotencyKey == null || effectiveIdempotencyKey == Guid.Empty)
+            {
+                return BadRequest("Idempotency key is required (header 'Idempotency-Key' or body field 'idempotencyKey').");
+            }
+
+            var existingOrder = await _dbContext.Orders
+                .AsNoTracking()
+                .FirstOrDefaultAsync(o => o.IdempotencyKey == effectiveIdempotencyKey.Value);
+
+            if (existingOrder != null)
+            {
+                var existingResponse = new CreateOrderResponse(existingOrder.Id, existingOrder.Status, existingOrder.TotalAmount, existingOrder.CreatedAt);
+                return Ok(existingResponse);
+            }
+
             var orderId = Guid.NewGuid();
             var items = req.Items.Select(i => new OrderItemDto(i.ProductId, i.Quantity)).ToArray();
-            var command = new CreateOrderCommand(Guid.NewGuid(), orderId, req.CustomerId, items);
+            var command = new CreateOrderCommand(Guid.NewGuid(), orderId, req.CustomerId, items, effectiveIdempotencyKey.Value);
             await _publishEndpoint.Publish(command);
             await _dbContext.SaveChangesAsync();
 
@@ -61,7 +78,7 @@ namespace BistrosoftChallenge.Api.Controllers
         }
     }
 
-    public record CreateOrderRequest(Guid CustomerId, OrderItemRequest[] Items);
+    public record CreateOrderRequest(Guid CustomerId, OrderItemRequest[] Items, Guid? IdempotencyKey);
     public record OrderItemRequest(Guid ProductId, int Quantity);
     public record CreateOrderResponse(Guid OrderId, OrderStatus Status, decimal TotalAmount, DateTime CreatedAt);
     public record ChangeOrderStatusRequest(OrderStatus NewStatus);

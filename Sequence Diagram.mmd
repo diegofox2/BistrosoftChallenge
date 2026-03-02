@@ -8,32 +8,64 @@ sequenceDiagram
     participant Bus as "MassTransit Bus"
     participant Broker as "Broker (RabbitMQ / InMemory)"
     participant Worker as "CreateOrderStateMachine (Worker)"
+    participant WOutbox as "EF Consumer Outbox (Worker Endpoint)"
 
-    Client->>Api: POST /api/orders (CreateOrderRequest)
-    Api->>Publish: Publish(CreateOrderCommand)
-    Publish->>Outbox: Enqueue outbox entry (tied to DbContext)
-    Api->>Db: SaveChangesAsync()&#59; persist outbox row
+    Client->>Api: POST /api/orders (CreateOrderRequest + Idempotency-Key)
+    Api->>Api: Validate Idempotency-Key (header/body)
 
-    alt UseBusOutbox configured
-        Db->>BusOutbox: Commit triggers dispatch
-        BusOutbox->>Bus: Dispatch message onto bus
-    else DB-based external dispatcher
-        Note over Db: Outbox row persisted&#59; external dispatcher will publish later
+    Api->>Db: Query Order by IdempotencyKey
+    alt Existing order found
+        Db-->>Api: Existing Order
+        Api-->>Client: 200 OK (existing order response)
+    else New request
+        Api->>Publish: Publish(CreateOrderCommand with IdempotencyKey)
+        Publish->>Outbox: Enqueue outbox entry (tied to DbContext)
+        Api->>Db: SaveChangesAsync()&#59; persist outbox row
+
+        alt UseBusOutbox configured
+            Db->>BusOutbox: Commit triggers dispatch
+            BusOutbox->>Bus: Dispatch message onto bus
+        else DB-based external dispatcher
+            Note over Db: Outbox row persisted&#59; external dispatcher will publish later
+        end
+
+        Bus->>Broker: Route message to exchange/queue
+        Broker->>Worker: Deliver CreateOrderCommand
+        Worker->>WOutbox: Deduplicate by MessageId (consumer outbox)
+
+        alt Duplicate message detected
+            WOutbox-->>Worker: Skip re-processing
+            Worker->>Broker: Acknowledge (ACK)
+        else First-time delivery
+            Worker->>Worker: Consume CreateOrderCommand
+            Worker->>Db: Query Order by IdempotencyKey/OrderId
+
+            alt Order already exists
+                Db-->>Worker: Existing Order
+                Worker->>WOutbox: Buffer OrderCreated publish
+                Worker->>Broker: Acknowledge (ACK)
+            else Continue business validation
+                Worker->>Db: Load Customer and Products&#59; validate
+
+                alt Validation fails
+                    Worker->>WOutbox: Buffer OrderCreationFailed publish
+                    Worker->>Worker: Finalize saga with error
+                    Worker->>Broker: Acknowledge (ACK)
+                else Validation succeeds
+                    Worker->>Db: Create Order(IdempotencyKey) and OrderItems&#59; update stock
+                    Worker->>Db: SaveChangesAsync()&#59; persist domain changes
+
+                    alt Unique key race/collision on save
+                        Worker->>Db: Re-query existing Order by IdempotencyKey/OrderId
+                        Db-->>Worker: Existing Order
+                    end
+
+                    Worker->>WOutbox: Buffer OrderCreated publish
+                    Worker->>Worker: Transition to Created and finalize
+                    Worker->>Broker: Acknowledge (ACK)
+                end
+            end
+
+            WOutbox->>Broker: Publish buffered events (OrderCreated/OrderCreationFailed)
+        end
     end
-
-    Bus->>Broker: Route message to exchange/queue
-    Broker->>Worker: Deliver CreateOrderCommand
-    Worker->>Worker: Consume CreateOrderCommand
-    Worker->>Db: Load Customer and Products&#59; validate
-
-    alt Validation fails
-        Worker->>Broker: Publish(OrderCreationFailed)
-        Worker->>Worker: Finalize saga with error
-    else Validation succeeds
-        Worker->>Db: Create Order and OrderItems&#59; update stock
-        Worker->>Db: SaveChangesAsync()&#59; persist domain changes
-        Worker->>Broker: Publish(OrderCreated)
-        Worker->>Worker: Transition to Created and finalize
-    end
-
-    Worker->>Broker: Acknowledge (ACK)

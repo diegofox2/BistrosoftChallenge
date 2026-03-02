@@ -3,6 +3,7 @@ using BistrosoftChallenge.Infrastructure.SagaStates;
 using BistrosoftChallenge.Infrastructure;
 using BistrosoftChallenge.MessageContracts;
 using MassTransit;
+using Microsoft.EntityFrameworkCore;
 
 namespace BistrosoftChallenge.Worker.Sagas
 {
@@ -28,6 +29,20 @@ namespace BistrosoftChallenge.Worker.Sagas
                         var msg = context.Message;
                         var consumeContext = context.GetPayload<ConsumeContext>();
                         var db = consumeContext.GetPayload<IServiceProvider>().GetRequiredService<AppDbContext>();
+
+                        var existingOrder = await db.Orders
+                            .AsNoTracking()
+                            .FirstOrDefaultAsync(o => o.IdempotencyKey == msg.IdempotencyKey || o.Id == msg.OrderId, consumeContext.CancellationToken);
+
+                        if (existingOrder != null)
+                        {
+                            context.Saga.OrderId = existingOrder.Id;
+                            context.Saga.CustomerId = existingOrder.CustomerId;
+                            context.Saga.CreatedAt = existingOrder.CreatedAt;
+                            context.Saga.UpdatedAt = DateTime.UtcNow;
+                            await context.Publish(new OrderCreated(msg.CorrelationId, existingOrder.Id, existingOrder.TotalAmount));
+                            return;
+                        }
 
                         var customer = await db.Customers.FindAsync(new object[] { msg.CustomerId }, consumeContext.CancellationToken);
                         if (customer == null)
@@ -77,6 +92,7 @@ namespace BistrosoftChallenge.Worker.Sagas
                         var order = new Order
                         {
                             Id = msg.OrderId,
+                            IdempotencyKey = msg.IdempotencyKey,
                             CustomerId = customer.Id,
                             CreatedAt = DateTime.UtcNow,
                             TotalAmount = totalAmount,
@@ -98,7 +114,29 @@ namespace BistrosoftChallenge.Worker.Sagas
                         }
 
                         db.Orders.Add(order);
-                        await db.SaveChangesAsync(consumeContext.CancellationToken);
+                        try
+                        {
+                            await db.SaveChangesAsync(consumeContext.CancellationToken);
+                        }
+                        catch (DbUpdateException)
+                        {
+                            var duplicatedOrder = await db.Orders
+                                .AsNoTracking()
+                                .FirstOrDefaultAsync(o => o.IdempotencyKey == msg.IdempotencyKey || o.Id == msg.OrderId, consumeContext.CancellationToken);
+
+                            if (duplicatedOrder == null)
+                            {
+                                throw;
+                            }
+
+                            context.Saga.OrderId = duplicatedOrder.Id;
+                            context.Saga.CustomerId = duplicatedOrder.CustomerId;
+                            context.Saga.CreatedAt = duplicatedOrder.CreatedAt;
+                            context.Saga.UpdatedAt = DateTime.UtcNow;
+
+                            await context.Publish(new OrderCreated(msg.CorrelationId, duplicatedOrder.Id, duplicatedOrder.TotalAmount));
+                            return;
+                        }
 
                         context.Saga.OrderId = order.Id;
                         context.Saga.CustomerId = order.CustomerId;

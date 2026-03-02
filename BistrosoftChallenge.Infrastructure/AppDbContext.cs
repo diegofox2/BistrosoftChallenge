@@ -48,9 +48,11 @@ namespace BistrosoftChallenge.Infrastructure
             modelBuilder.Entity<Order>(b =>
             {
                 b.HasKey(x => x.Id);
+                b.Property(x => x.IdempotencyKey).IsRequired();
                 b.Property(x => x.TotalAmount).IsRequired();
                 b.Property(x => x.CreatedAt).IsRequired();
                 b.Property(x => x.Status).IsRequired();
+                b.HasIndex(x => x.IdempotencyKey).IsUnique();
                 b.HasMany(x => x.OrderItems).WithOne(x => x.Order).HasForeignKey(x => x.OrderId);
             });
 

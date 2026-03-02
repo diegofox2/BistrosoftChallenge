@@ -6,7 +6,7 @@ namespace BistrosoftChallenge.MessageContracts
 {
     public record CreateCustomerCommand(Guid CorrelationId, Guid CustomerId, string Name, string Email, string? PhoneNumber);
     public record OrderItemDto(Guid ProductId, int Quantity);
-    public record CreateOrderCommand(Guid CorrelationId, Guid OrderId, Guid CustomerId, IReadOnlyList<OrderItemDto> Items);
+    public record CreateOrderCommand(Guid CorrelationId, Guid OrderId, Guid CustomerId, IReadOnlyList<OrderItemDto> Items, Guid IdempotencyKey);
     public record ChangeOrderStatusCommand(Guid CorrelationId, Guid OrderId, OrderStatus NewStatus);
 
     public record CustomerCreated(Guid CorrelationId, Guid CustomerId);
